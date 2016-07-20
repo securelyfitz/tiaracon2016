@@ -15,6 +15,8 @@ todos:
 --switch power modes when in state 0 to prolong standby battery life https://learn.sparkfun.com/tutorials/h2ohno/low-power-attiny
 --turn off ADC to save power
 
+
+
 Jason Webb - zen.webb@gmail.com
 Project wiki: http://jason-webb.info/wiki/index.php?title=Jar_of_Fireflies
 Github repo: https://github.com/jasonwebb/Jar-of-Fireflies
@@ -22,7 +24,6 @@ Github repo: https://github.com/jasonwebb/Jar-of-Fireflies
 
 #define F_CPU 1000000
 
-#include <CapacitiveSensor.h>
 
 // Pin assignments
 const byte pinA = 0;
@@ -40,9 +41,9 @@ int flashmillis=0;
 int delaymillis=0;
 bool pressed=false;
 
-CapacitiveSensor   cs_3_4 = CapacitiveSensor(3,4);        // 10M resistor between pins 3 & 4, pin 4 is sensor pin, add a wire and or foil if desired
 
 void setup() {
+  pinMode(3,INPUT_PULLUP);
   // Flush any stray current from the ports
   turnOffAll();
   // flash each LED to show they work and so we know we just put in a good battery
@@ -63,11 +64,11 @@ void setup() {
 void loop() {    
   //debounce capacitive sensor
   if(pressed){
-    if((cs_3_4.capacitiveSensor(1)<10)){
+    if(digitalRead(3)){
       pressed=false;
     }
   }else{
-    if(cs_3_4.capacitiveSensor(1)>50){
+    if(digitalRead(3)==0){
       pressed=true;
       state(currstate+1);
     }
