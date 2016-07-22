@@ -21,7 +21,7 @@ Jason Webb - zen.webb@gmail.com
 Project wiki: http://jason-webb.info/wiki/index.php?title=Jar_of_Fireflies
 Github repo: https://github.com/jasonwebb/Jar-of-Fireflies
 */
-
+#include <avr/sleep.h>
 #define F_CPU 1000000
 
 
@@ -29,124 +29,81 @@ Github repo: https://github.com/jasonwebb/Jar-of-Fireflies
 const byte pinA = 0;
 const byte pinB = 1;
 const byte pinC = 2;
+#define NUMSTATES 6;
 
-//i'm lazy so i use a ton of global variables to track state
+int currmode=0;
+bool pressed= false;
 int currled=0;
-//int numleds=1;
-int count=0;
-int currstate=0;
-int startmillis=0;
-int currmillis=0;
-int flashmillis=0;
-int delaymillis=0;
-bool pressed=false;
-
 
 void setup() {
+  GIMSK |= _BV(PCIE);                     // Enable Pin Change Interrupts
+  PCMSK |= _BV(PCINT3);                   // Use PB3 as interrupt pin
+  sei();                                  // enables interrupts
+  ADCSRA &= ~_BV(ADEN);                   // ADC off
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN);    // everything off
+
   pinMode(3,INPUT_PULLUP);
-  // Flush any stray current from the ports
-  turnOffAll();
-  // flash each LED to show they work and so we know we just put in a good battery
-  for(int j=0; j<6; j++) {
-    turnOn(j);
-    delay(250);
-  }
-/*  numleds=2;
-  for(int j=0; j<6; j++) {
-    turnOn(j);
-    delay(250);
-  }
-  numleds=1;
-*/
-  turnOffAll();
+/*  // flash each LED to show they work and so we know we just put in a good battery
+  do{
+    for(int j=0; j<6; j++) {
+      turnOn(j);
+//      delay(250);
+    }
+  }while (currmode=0);
+  randomSeed(millis());*/
 }
 
-void loop() {    
-  //debounce capacitive sensor
-  if(pressed){
-    if(digitalRead(3)){
-      pressed=false;
-    }
-  }else{
-    if(digitalRead(3)==0){
-      pressed=true;
-      state(currstate+1);
-    }
-  }
-
-  //LED state is depentend on a combination of all those global variables, plus the elapsed time since entering that state:
-  currmillis=millis()-startmillis;
-
-  //do all the work. all this to just set an LED based on the elapsed milliseconds and current state.
-  switch(currstate) {
-    case 0:
-      turnOffAll();
-    break;
-    case 1:  //one long flash
-      multiflash(2,4096,4096,0,0);
-    break;
-    case 2: //flash quickly for a minute
-      multiflash(120,250,750,0,0);
-    break;
-    case 3: //flash slow for 5 minutes with pause in between
-      multiflash(60,2500,7500,500,2500);
-    break;
-    case 4: //flash random quick forever
-      multiflash(0,250,750,0,0);
-    break;
-    case 5: //flash slow forever with pause inbetween
-      multiflash(0,2500,7500,500,2500);
-    break;
-  }
+ISR(PCINT0_vect)
+{
+  // if we're not in the pressed state and you press the button, enter the pressed state and increment mode
+  if (!digitalRead(3)&&!pressed){pressed=true;currmode++;}
+  // if we're in the pressed state, and the button is now released, leave pressed state
+  if (digitalRead(3)&&pressed){pressed=false;}
 }
-
-//all this to maintain state between loops
-void multiflash(int numflashes,int minflash,int maxflash,int mindelay,int maxdelay){
-      //if our counter decrements, turn off (state 0)
-      if ((count>=numflashes)and(numflashes!=0)){
-        count=0;
-        state(0);
-      //if we've exceeded the lenth of time for the current flash, prepare for the next flash
-      }else if(currmillis>flashmillis+delaymillis){
-        startmillis=millis();  
-        currled=random(0,5);
-//        numleds=random(1,2);
-        flashmillis=random(minflash,maxflash);
-        delaymillis=random(mindelay,maxdelay);
-        count++;
-      //otherwise. flash a LED
-      } else {
-        timedflash(currled,flashmillis,currmillis);
+void loop() {  
+  switch(currmode){
+    case 0:    //all on
+      for(int j=0; j<6; j++) {
+        turnOn(j);
       }
-}
-
-//resets a ton of global variables to enter a different state
-void state(int nextstate){ 
-        turnOffAll(); 
-        currstate=nextstate;  
-        currstate%=6;
-        startmillis=millis();  
-        flashmillis=0;
-        delaymillis=0;
-        currled=random(0,5);
-//        numleds=random(1,2);
-}
-
-
-//this sets the right PWM value for the LED based on how long the tootal flash should be and how much time has elapsed
-void timedflash(int led, int totalmillis, int elapsedmillis){
-  //if we're past the end of the flash, then off
-  if (elapsedmillis>totalmillis){
-    turnOff(led);
-  //if we're the first second, then fade in proportionally
-  }else if (elapsedmillis<1024){
-    analogOn(led,byte(elapsedmillis/4));
-  //if we're in the last second, then fade out proportionally
-  }else if (totalmillis-elapsedmillis<1024){
-    analogOn(led,(totalmillis-elapsedmillis)/4);
-  //otherwise, just stay lit
-  }else{
-    turnOn(led);
+      break;
+    case 1:    //I on
+      turnOn(5);
+      break;
+    case 2:    //tiara on
+      for(int j=0; j<5; j++) {
+        turnOn(j);
+      }
+      break;
+    case 3:   //ordered fade quick
+      currled++;
+      currled%=6;
+      for (int brightness=0;brightness<256;brightness++){
+        analogOn(currled, brightness);
+      }
+      for (int brightness=255;brightness>0;brightness--){
+        analogOn(currled, brightness);
+      }
+      break;
+    case 4:   //random fade slow
+      randomSeed(millis());
+      currled=random(0,6);
+      for (int brightness=0;brightness<256;brightness++){
+        analogOn(currled, brightness);
+        delay(6);
+      }
+      for (int brightness=255;brightness>0;brightness--){
+        analogOn(currled, brightness);
+        delay(6);
+      }
+      break;
+    case 5:
+      turnOffAll(); 
+      sleep_enable();
+      sleep_cpu();
+    default:
+      currmode=0;
+      break;
   }
 }
 
@@ -170,137 +127,56 @@ void turnOff(byte led) {
   analogOn(led, 0);
 }
 
-//turns off all LEDs. Should be fixed to use the pin assignments instead of pin numbers directly
+//turns off all LEDs.
 void turnOffAll() {
-  for(int i=0; i<=2; i++) {
-    pinMode(i, OUTPUT);
-    digitalWrite(i, LOW);
-  }
+  pinMode(pinA, INPUT);
+  pinMode(pinB, INPUT);
+  pinMode(pinC, INPUT);
 }
-
-//this chooses between illuminating 1 or 2 charlieplexed LEDs
-//not working properly right now
-/*
-void analogOn12(byte led, byte value) {
-  if (numleds==1){
-    analogOn(led,value);
-  }else{
-    analogOn2(led,value);
-  }
-}
-
-
-// Write an analog value to 2 LEDs. Thanks to charlieplexing, we can some pairs of LEDs on at once.
-//not working properly yet
-void analogOn2(byte led, byte value) {
-  switch(led) {
-    case 0:
-      pinMode(pinA, OUTPUT);
-      pinMode(pinB, OUTPUT);
-      pinMode(pinC, OUTPUT);
-      
-      digitalWrite(pinA, LOW);
-      digitalWrite(pinC, LOW);
-      analogWrite(pinB, value);
-      break;
-    case 1:
-      pinMode(pinA, OUTPUT);
-      pinMode(pinB, OUTPUT);
-      pinMode(pinC, OUTPUT);
-      
-      digitalWrite(pinB, LOW);
-      digitalWrite(pinC, LOW);
-      analogWrite(pinA, value);
-      break;
-    case 2:
-      pinMode(pinA, OUTPUT);
-      pinMode(pinB, OUTPUT);
-      pinMode(pinC, OUTPUT);
-      
-      digitalWrite(pinC, HIGH);
-      digitalWrite(pinA, HIGH);
-      analogWrite(pinB, 255-value);
-      break;
-    case 3:
-      pinMode(pinA, OUTPUT);
-      pinMode(pinB, OUTPUT);
-      pinMode(pinC, OUTPUT);
-      
-      digitalWrite(pinC, LOW);
-      digitalWrite(pinA, LOW);
-      analogWrite(pinB, value);
-      break;
-    case 4:
-      pinMode(pinA, OUTPUT);
-      pinMode(pinB, OUTPUT);
-      pinMode(pinC, OUTPUT);
-      
-      digitalWrite(pinC, HIGH);
-      digitalWrite(pinB, HIGH);
-      analogWrite(pinA, 255-value);
-      break;
-    case 5:
-      pinMode(pinA, OUTPUT);
-      pinMode(pinB, OUTPUT);
-      pinMode(pinC, OUTPUT);
-      
-      digitalWrite(pinC, LOW);
-      digitalWrite(pinB, LOW);
-      analogWrite(pinA, value);
-      break;
-  }
-}
-*/
-// Write an analog value to an LED - just one LED
+// Write an analog value to an LED.
 void analogOn(byte led, byte value) {
   switch(led) {
-    case 0:
-      pinMode(pinA, OUTPUT);
-      pinMode(pinB, OUTPUT);
+    case 4:
       pinMode(pinC, INPUT);
-      
       digitalWrite(pinA, LOW);
-      analogWrite(pinB, value);
-      break;
-    case 1:
       pinMode(pinA, OUTPUT);
+      analogWrite(pinB, value);
       pinMode(pinB, OUTPUT);
+      break;
+    case 3:
       pinMode(pinC, INPUT);
-      
       digitalWrite(pinB, LOW);
+      pinMode(pinB, OUTPUT);
       analogWrite(pinA, value);
+      pinMode(pinA, OUTPUT);
+      break;
+    case 5:
+      pinMode(pinA, INPUT);
+      analogWrite(pinB, 255-value);
+      pinMode(pinB, OUTPUT);
+      digitalWrite(pinC, HIGH);
+      pinMode(pinC, OUTPUT);
       break;
     case 2:
       pinMode(pinA, INPUT);
-      pinMode(pinB, OUTPUT);
-      pinMode(pinC, OUTPUT);
-      
-      digitalWrite(pinC, HIGH);
-      analogWrite(pinB, 255-value);
-      break;
-    case 3:
-      pinMode(pinA, INPUT);
-      pinMode(pinB, OUTPUT);
-      pinMode(pinC, OUTPUT);
-      
       digitalWrite(pinC, LOW);
+      pinMode(pinC, OUTPUT);
       analogWrite(pinB, value);
+      pinMode(pinB, OUTPUT);
       break;
-    case 4:
-      pinMode(pinA, OUTPUT);
+    case 1:
       pinMode(pinB, INPUT);
-      pinMode(pinC, OUTPUT);
-      
-      digitalWrite(pinC, HIGH);
       analogWrite(pinA, 255-value);
-      break;
-    case 5:
       pinMode(pinA, OUTPUT);
-      pinMode(pinB, INPUT);
+      digitalWrite(pinC, HIGH);
       pinMode(pinC, OUTPUT);
-      
+      break;
+    case 0:
+      pinMode(pinB, INPUT);
       digitalWrite(pinC, LOW);
+      pinMode(pinC, OUTPUT);
       analogWrite(pinA, value);
+      pinMode(pinA, OUTPUT);      
       break;
   }
 }
